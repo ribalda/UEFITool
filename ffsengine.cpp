@@ -797,8 +797,8 @@ UINT8 FfsEngine::parseBios(const QByteArray & bios, const QModelIndex & parent)
         // Get info
         QByteArray padding = bios.left(prevVolumeOffset);
         name = tr("Padding");
-        info = tr("Full size: %1h (%2)")
-            .hexarg(padding.size()).arg(padding.size());
+        info = tr("Full size: %1h (%2)\nOffset: %3h")
+            .hexarg(padding.size()).arg(padding.size()).hexarg(0);
 
         // Add tree item
         model->addItem(Types::Padding, getPaddingType(padding), COMPRESSION_ALGORITHM_NONE, name, "", info, QByteArray(), padding, parent);
@@ -823,8 +823,8 @@ UINT8 FfsEngine::parseBios(const QByteArray & bios, const QModelIndex & parent)
             QByteArray padding = bios.mid(prevVolumeOffset + prevVolumeSize, paddingSize);
             // Get info
             name = tr("Padding");
-            info = tr("Full size: %1h (%2)")
-                .hexarg(padding.size()).arg(padding.size());
+            info = tr("Full size: %1h (%2)\nOffset: %3h")
+                .hexarg(padding.size()).arg(padding.size()).hexarg(prevVolumeOffset + prevVolumeSize);
             // Add tree item
             model->addItem(Types::Padding, getPaddingType(padding), COMPRESSION_ALGORITHM_NONE, name, "", info, QByteArray(), padding, parent);
         }
@@ -870,7 +870,7 @@ UINT8 FfsEngine::parseBios(const QByteArray & bios, const QModelIndex & parent)
 
         // Parse volume
         QModelIndex index;
-        UINT8 result = parseVolume(bios.mid(volumeOffset, volumeSize), index, parent);
+        UINT8 result = parseVolume(bios.mid(volumeOffset, volumeSize), index, parent, CREATE_MODE_APPEND, volumeOffset);
         if (result)
             msg(tr("parseBios: volume parsing failed with error \"%1\"").arg(errorMessage(result)), parent);
 
@@ -954,7 +954,7 @@ UINT8 FfsEngine::getVolumeSize(const QByteArray & bios, UINT32 volumeOffset, UIN
     return ERR_SUCCESS;
 }
 
-UINT8  FfsEngine::parseVolume(const QByteArray & volume, QModelIndex & index, const QModelIndex & parent, const UINT8 mode)
+UINT8  FfsEngine::parseVolume(const QByteArray & volume, QModelIndex & index, const QModelIndex & parent, const UINT8 mode, const UINT32 offset)
 {
     // Check that there is space for the volume header
     if ((UINT32)volume.size() < sizeof(EFI_FIRMWARE_VOLUME_HEADER)) {
@@ -1057,6 +1057,8 @@ UINT8  FfsEngine::parseVolume(const QByteArray & volume, QModelIndex & index, co
             .hexarg(extendedHeader->ExtHeaderSize).arg(extendedHeader->ExtHeaderSize)
             .arg(guidToQString(extendedHeader->FvName));
     }
+
+    info += tr("\nOffset: %1h").hexarg(offset);
 
     // Add text
     QString text;
@@ -1196,7 +1198,7 @@ UINT8  FfsEngine::parseVolume(const QByteArray & volume, QModelIndex & index, co
 
         // Parse file
         QModelIndex fileIndex;
-        result = parseFile(file, fileIndex, volumeHeader->Revision, empty == '\xFF' ? ERASE_POLARITY_TRUE : ERASE_POLARITY_FALSE, index);
+        result = parseFile(file, fileIndex, volumeHeader->Revision, empty == '\xFF' ? ERASE_POLARITY_TRUE : ERASE_POLARITY_FALSE, index, CREATE_MODE_APPEND, offset + fileOffset);
         if (result && result != ERR_VOLUMES_NOT_FOUND && result != ERR_INVALID_VOLUME)
             msg(tr("parseVolume: FFS file parsing failed with error \"%1\"").arg(errorMessage(result)), index);
 
@@ -1214,7 +1216,7 @@ UINT8  FfsEngine::parseVolume(const QByteArray & volume, QModelIndex & index, co
     return ERR_SUCCESS;
 }
 
-UINT8 FfsEngine::parseFile(const QByteArray & file, QModelIndex & index, const UINT8 revision, const UINT8 erasePolarity, const QModelIndex & parent, const UINT8 mode)
+UINT8 FfsEngine::parseFile(const QByteArray & file, QModelIndex & index, const UINT8 revision, const UINT8 erasePolarity, const QModelIndex & parent, const UINT8 mode, const UINT32 offset)
 {
     bool msgInvalidHeaderChecksum = false;
     bool msgInvalidDataChecksum = false;
@@ -1334,6 +1336,7 @@ UINT8 FfsEngine::parseFile(const QByteArray & file, QModelIndex & index, const U
         .hexarg2(fileHeader->State, 2)
         .hexarg2(fileHeader->IntegrityCheck.Checksum.Header, 2)
         .hexarg2(fileHeader->IntegrityCheck.Checksum.File, 2);
+    info += tr("\nOffset: %1h").hexarg(offset);
 
     // Add tree item
     index = model->addItem(Types::File, fileHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
@@ -1387,7 +1390,7 @@ UINT8 FfsEngine::parseFile(const QByteArray & file, QModelIndex & index, const U
     }
 
     // Parse sections
-    result = parseSections(body, index);
+    result = parseSections(body, index, offset + header.size());
     if (result)
         return result;
 
@@ -1413,7 +1416,7 @@ UINT8 FfsEngine::getSectionSize(const QByteArray & file, const UINT32 sectionOff
     return ERR_SUCCESS;
 }
 
-UINT8 FfsEngine::parseSections(const QByteArray & body, const QModelIndex & parent)
+UINT8 FfsEngine::parseSections(const QByteArray & body, const QModelIndex & parent, const UINT32 offset)
 {
     // Search for and parse all sections
     UINT32 sectionOffset = 0;
@@ -1432,7 +1435,7 @@ UINT8 FfsEngine::parseSections(const QByteArray & body, const QModelIndex & pare
 
         // Parse section
         QModelIndex sectionIndex;
-        result = parseSection(body.mid(sectionOffset, sectionSize), sectionIndex, parent);
+        result = parseSection(body.mid(sectionOffset, sectionSize), sectionIndex, parent, CREATE_MODE_APPEND, offset + sectionOffset);
         if (result)
             return result;
 
@@ -1555,7 +1558,7 @@ UINT8 FfsEngine::parseDepexSection(const QByteArray & body, QString & parsed)
     return ERR_SUCCESS;
 }
 
-UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, const QModelIndex & parent, const UINT8 mode)
+UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, const QModelIndex & parent, const UINT8 mode, UINT32 offset)
 {
     const EFI_COMMON_SECTION_HEADER* sectionHeader = (const EFI_COMMON_SECTION_HEADER*)(section.constData());
     QString name = sectionTypeToQString(sectionHeader->Type) + tr(" section");
@@ -1598,6 +1601,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
         }
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, algorithm, name, "", info, header, body, parent, mode);
         model->setDictionarySize(index, dictionarySize);
 
@@ -1605,7 +1609,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
         if (!parseCurrentSection)
             msg(tr("parseSection: decompression failed with error \"%1\"").arg(errorMessage(result)), index);
         else { // Parse decompressed data
-            result = parseSections(decompressed, index);
+            result = parseSections(decompressed, index, 0x80000000);
             if (result)
                 return result;
         }
@@ -1756,6 +1760,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
         }
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, algorithm, name, "", info, header, body, parent, mode);
         model->setDictionarySize(index, dictionarySize);
 
@@ -1779,7 +1784,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             msg(tr("parseSection: GUID defined section can not be processed"), index);
         }
         else { // Parse processed data
-            result = parseSections(processed, index);
+            result = parseSections(processed, index, 0x40000000);
             if (result)
                 return result;
         }
@@ -1798,10 +1803,11 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             .hexarg(body.size()).arg(body.size());
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
 
         // Parse section body
-        result = parseSections(body, index);
+        result = parseSections(body, index, offset + headerSize);
         if (result)
             return result;
     } break;
@@ -1830,6 +1836,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             info += tr("\nParsed expression:%1").arg(str);
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
 
         // Show messages
@@ -1873,6 +1880,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
                 .hexarg(teHeader->ImageBase + teHeader->AddressOfEntryPoint - teFixup);
         }
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
 
         // Show messages
@@ -1960,6 +1968,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
         }
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
 
         // Show messages
@@ -1998,6 +2007,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             .hexarg(body.size()).arg(body.size());
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
     } break;
 
@@ -2015,6 +2025,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             .arg(guidToQString(fsgHeader->SubTypeGuid));
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
 
         // Rename section
@@ -2037,6 +2048,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             .arg(QString::fromUtf16((const ushort*)body.constData()));
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
     } break;
 
@@ -2054,6 +2066,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             .arg(text);
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
 
         // Rename parent file
@@ -2072,6 +2085,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             .hexarg(body.size()).arg(body.size());
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
 
         // Parse section body as BIOS space
@@ -2125,6 +2139,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
         }
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
 
         // Parse section body as BIOS space
@@ -2153,6 +2168,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             .hexarg(postcodeHeader->Postcode);
 
         // Add tree item
+	info += tr("\nOffset: %1h").hexarg(offset);
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
     } break;
 
@@ -2166,6 +2182,7 @@ UINT8 FfsEngine::parseSection(const QByteArray & section, QModelIndex & index, c
             .hexarg(header.size()).arg(header.size())
             .hexarg(body.size()).arg(body.size());
 
+	info += tr("\nOffset: %1h").hexarg(offset);
         // Add tree item
         index = model->addItem(Types::Section, sectionHeader->Type, COMPRESSION_ALGORITHM_NONE, name, "", info, header, body, parent, mode);
         msg(tr("parseSection: section with unknown type %1h").hexarg2(sectionHeader->Type, 2), index);

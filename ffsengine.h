@@ -69,10 +69,10 @@ public:
     UINT8 parsePdrRegion(const QByteArray & pdr, QModelIndex & index, const QModelIndex & parent, const UINT8 mode = CREATE_MODE_APPEND);
     UINT8 parseEcRegion(const QByteArray & ec, QModelIndex & index, const QModelIndex & parent, const UINT8 mode = CREATE_MODE_APPEND);
     UINT8 parseBios(const QByteArray & bios, const QModelIndex & parent = QModelIndex());
-    UINT8 parseVolume(const QByteArray & volume, QModelIndex & index, const QModelIndex & parent = QModelIndex(), const UINT8 mode = CREATE_MODE_APPEND);
-    UINT8 parseFile(const QByteArray & file, QModelIndex & index, const UINT8 revision = 2, const UINT8 erasePolarity = ERASE_POLARITY_UNKNOWN, const QModelIndex & parent = QModelIndex(), const UINT8 mode = CREATE_MODE_APPEND);
-    UINT8 parseSections(const QByteArray & body, const QModelIndex & parent = QModelIndex());
-    UINT8 parseSection(const QByteArray & section, QModelIndex & index, const QModelIndex & parent = QModelIndex(), const UINT8 mode = CREATE_MODE_APPEND);
+    UINT8 parseVolume(const QByteArray & volume, QModelIndex & index, const QModelIndex & parent = QModelIndex(), const UINT8 mode = CREATE_MODE_APPEND, const UINT32 offset = 0);
+    UINT8 parseFile(const QByteArray & file, QModelIndex & index, const UINT8 revision = 2, const UINT8 erasePolarity = ERASE_POLARITY_UNKNOWN, const QModelIndex & parent = QModelIndex(), const UINT8 mode = CREATE_MODE_APPEND, const UINT32 offset = 0);
+    UINT8 parseSections(const QByteArray & body, const QModelIndex & parent = QModelIndex(), const UINT32 offset = 0);
+    UINT8 parseSection(const QByteArray & section, QModelIndex & index, const QModelIndex & parent = QModelIndex(), const UINT8 mode = CREATE_MODE_APPEND, const UINT32 offset = 0);
 
     // Compression routines
     UINT8 decompress(const QByteArray & compressed, const UINT8 compressionType, QByteArray & decompressedData, UINT8 * algorithm = NULL);
